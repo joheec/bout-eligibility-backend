@@ -1,14 +1,26 @@
+'use strict';
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
 
-// // Create and Deploy Your First Cloud Functions
-// // https://firebase.google.com/docs/functions/write-firebase-functions
-//
-// exports.helloWorld = functions.https.onRequest((request, response) => {
-//  response.send("Hello from Firebase!");
-// });
-
 admin.initializeApp(functions.config().firebase);
+
+exports.date = functions.https.onRequest((req, res) => {
+  res.status(200).send('JOHEE');
+});
+
+exports.addMessage = functions.https.onRequest(async (req, res) => {
+  const original = req.query.text;
+  const writeResult = await admin.firestore().collection('messages').add({ original: original });
+  res.json({ result: `Message with ID: ${writeResult.id} added.` });
+});
+
+exports.makeUppercase = functions.firestore.document('/messages/{documentId}')
+  .onCreate((snap, context) => {
+    const original = snap.data().original;
+    console.log('Uppercasing', context.params.documentID, original);
+    const uppercase = original.toUpperCase();
+    return snap.ref.set({uppercase}, {merge: true});
+  });
 
 let db = admin.firestore();
 let docRef = db.collection('users').doc('UH1tRz041Tap0Ptm6ZJV0QRgxgy1');
@@ -41,6 +53,7 @@ db.collection('users').get()
     snapshot.forEach((doc) => {
       console.log(doc.id, '=>', doc.data());
     });
-    .catch((err) => {
-      console.log('Error getting documents', err);
-    });
+  })
+  .catch((err) => {
+    console.log('Error getting documents', err);
+  });
