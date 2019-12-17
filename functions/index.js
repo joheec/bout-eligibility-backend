@@ -28,39 +28,56 @@ const requirements = {
   }
 };
 
-const getEligibility = async (collRef, uid) => (
-  await collRef.get()
-    .then(snapshot => {
-      let docs = []
-      snapshot.forEach(doc => {
-        if (doc.id === uid) {
-          docs.push(doc);
-        }
-      })
-      return docs;
-    })
-    .then(entries => {
-      if(entries.length === 0) {
-        collRef.doc(uid).set(requirements);
-        return requirements;
-      }
-      const entry = {
-        ...requirements,
-        ...entries[0].data()
-      };
-      collRef.doc(uid).set(entry);
-      return entry;
-    })
-    .catch(err => {
-      console.log('Error getting documents', err);
-    })
-);
+const getEligibility = async (userCollRef, uid) => {
+  const boutDocRefs = await userCollRef.listDocuments()
+    .catch(err => console.log('Error getting bout documents: ', err));
+
+  // Add any missing bout documents
+  let missingBoutKeys = Object.keys(requirements);
+  boutDocRefs.forEach(boutDocRef => {
+    missingBoutKeys = missingBoutKeys.filter(boutKey => (
+      boutDocRef.path !== `${uid}/${boutKey}`
+    ));
+  });
+
+  return Promise.all(missingBoutKeys.map(boutKey => {
+    const boutDocRef = userCollRef.doc(boutKey);
+    return boutDocRef.set({ ...requirements[boutKey] })
+      .catch(err => console.log(`Error setting bout (${boutKey}) requirements`, err));
+  }))
+    .then(() => userCollRef.listDocuments())
+    .then((updatedBoutDocRefs) => (
+      updatedBoutDocRefs.reduce(async (arr, boutDocRef) => {
+        const boutData = await boutDocRef.get()
+          .then(boutDocSnap => (boutDocSnap.data()));
+        return {
+          ...arr,
+          [boutDocRef.id]: boutData,
+        };
+      }, {})
+    ))
+    .catch(err => console.log('Error updating missing bout requirements', err));
+};
+
+const updateEligibility = async (userCollRef, data) => {
+  console.log('doc', userCollRef.doc(data.uid));
+};
 
 exports.eligibility = functions.https.onRequest(async (req, res) => {
   try {
-    const collRef = await db.collection('users');
-    const userData = await getEligibility(collRef, req.query.uid);
-    res.status(200).send(JSON.stringify(userData));
+    const userCollRef = db.collection(req.query.uid);
+    let eligibilityData;
+
+    switch (req.method) {
+      case 'PUT':
+        eligibilityData = await updateEligibility(userCollRef, JSON.parse(req.body));
+        break;
+      default:
+        eligibilityData = await getEligibility(userCollRef, req.query.uid);
+        break;
+    }
+
+    res.status(200).send(JSON.stringify(eligibilityData));
   } catch (err) {
     console.log({ err });
   }
