@@ -28,7 +28,18 @@ const requirements = {
   }
 };
 
-const getEligibility = async (userCollRef, uid) => {
+const getCollData = async collRef => {
+  const docRefs = await collRef.listDocuments();
+  return Promise.resolve(
+    docRefs.reduce(async (arr, docRef) => {
+      const docData = await docRef.get().then(docSnap => docSnap.data());
+      return { ...arr, [docRef.id]: docData };
+    }, {})
+  );
+};
+
+const getEligibility = async (uid) => {
+  const userCollRef = db.collection(uid);
   const boutDocRefs = await userCollRef.listDocuments()
     .catch(err => console.log('Error getting bout documents: ', err));
 
@@ -45,38 +56,57 @@ const getEligibility = async (userCollRef, uid) => {
     return boutDocRef.set({ ...requirements[boutKey] })
       .catch(err => console.log(`Error setting bout (${boutKey}) requirements`, err));
   }))
-    .then(() => userCollRef.listDocuments())
-    .then((updatedBoutDocRefs) => (
-      updatedBoutDocRefs.reduce(async (arr, boutDocRef) => {
-        const boutData = await boutDocRef.get()
-          .then(boutDocSnap => (boutDocSnap.data()));
-        return {
-          ...arr,
-          [boutDocRef.id]: boutData,
-        };
-      }, {})
-    ))
+    .then(() => getCollData(userCollRef))
     .catch(err => console.log('Error updating missing bout requirements', err));
 };
 
-const updateEligibility = async (userCollRef, data) => {
-  console.log('doc', userCollRef.doc(data.uid));
+const updateRequirement = (payload, requirementData) => {
+  const { requirement, subRequirement, value } = payload;
+  const requirementType = {
+    practice: 'array',
+    scrimmage: 'array',
+    strategyHour: 'array',
+    volunteer1: 'object',
+    volunteer2: 'object',
+  };
+
+  if (requirementType[requirement] === 'array') {
+    return [
+      ...requirementData.slice(0, subRequirement),
+      {
+        ...requirementData[subRequirement],
+        ...value,
+      },
+      ...requirementData.slice(subRequirement + 1),
+    ];
+  }
+  return {
+    ...requirementData,
+    [subRequirement]: value,
+  };
+};
+
+const updateEligibility = async (payload) => {
+  const userCollRef = db.collection(payload.uid);
+  const boutDocRef = userCollRef.doc(payload.boutDate);
+  const boutData = await boutDocRef.get()
+    .then(boutDocSnap => boutDocSnap.data())
+    .catch(err => console.log('Error getting bout doc data', err));
+  return boutDocRef.update({ [payload.requirement]: updateRequirement(payload, boutData[payload.requirement]) })
+    .then(() => getCollData(userCollRef));
 };
 
 exports.eligibility = functions.https.onRequest(async (req, res) => {
   try {
-    const userCollRef = db.collection(req.query.uid);
     let eligibilityData;
-
     switch (req.method) {
       case 'PUT':
-        eligibilityData = await updateEligibility(userCollRef, JSON.parse(req.body));
+        eligibilityData = await updateEligibility(JSON.parse(req.body));
         break;
       default:
-        eligibilityData = await getEligibility(userCollRef, req.query.uid);
+        eligibilityData = await getEligibility(req.query.uid);
         break;
     }
-
     res.status(200).send(JSON.stringify(eligibilityData));
   } catch (err) {
     console.log({ err });
