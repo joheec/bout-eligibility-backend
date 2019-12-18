@@ -33,7 +33,7 @@ const getCollData = async collRef => {
   return Promise.resolve(
     docRefs.reduce(async (arr, docRef) => {
       const docData = await docRef.get().then(docSnap => docSnap.data());
-      return { ...arr, [docRef.id]: docData };
+      return Object.assign({}, arr, { [docRef.id]: docData });
     }, {})
   );
 };
@@ -53,7 +53,7 @@ const getEligibility = async (uid) => {
 
   return Promise.all(missingBoutKeys.map(boutKey => {
     const boutDocRef = userCollRef.doc(boutKey);
-    return boutDocRef.set({ ...requirements[boutKey] })
+    return boutDocRef.set(Object.assign({}, requirements[boutKey]))
       .catch(err => console.log(`Error setting bout (${boutKey}) requirements`, err));
   }))
     .then(() => getCollData(userCollRef))
@@ -71,19 +71,13 @@ const updateRequirement = (payload, requirementData) => {
   };
 
   if (requirementType[requirement] === 'array') {
-    return [
-      ...requirementData.slice(0, subRequirement),
-      {
-        ...requirementData[subRequirement],
-        ...value,
-      },
-      ...requirementData.slice(subRequirement + 1),
-    ];
+    return [].concat(
+      requirementData.slice(0, subRequirement),
+      [Object.assign({}, requirementData[subRequirement], value)],
+      requirementData.slice(subRequirement + 1)
+    );
   }
-  return {
-    ...requirementData,
-    [subRequirement]: value,
-  };
+  return Object.assign({}, requirementData, { [subRequirement]: value });
 };
 
 const updateEligibility = async (payload) => {
