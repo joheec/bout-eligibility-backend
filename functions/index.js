@@ -6,6 +6,26 @@ admin.initializeApp(functions.config().firebase);
 let db = admin.firestore();
 
 const requirements = {
+  20200417: {
+    strategyHour: [
+      { signin: false, date: null },
+      { signin: false, date: null },
+      { signin: false, date: null },
+    ],
+    practice: [
+      { signin: false, date: null },
+      { signin: false, date: null },
+      { signin: false, date: null },
+    ],
+    scrimmage: [
+      { signin: false, date: null },
+      { signin: false, date: null },
+      { signin: false, date: null },
+      { signin: false, date: null },
+    ],
+    volunteer1: { vologistic: false, hours: 0 },
+    volunteer2: { vologistic: false, hours: 0 },
+  },
   20200229: {
     strategyHour: [
       { signin: false, date: null },
@@ -30,12 +50,10 @@ const requirements = {
 
 const getCollData = async collRef => {
   const docRefs = await collRef.listDocuments();
-  return Promise.resolve(
-    docRefs.reduce(async (arr, docRef) => {
-      const docData = await docRef.get().then(docSnap => docSnap.data());
-      return Object.assign({}, arr, { [docRef.id]: docData });
-    }, {})
-  );
+  const docData = await Promise.all(docRefs.map(docRef => (
+    docRef.get().then(docSnap => ({ [docRef.id]: docSnap.data() })))
+  ));
+  return Promise.resolve(docData.reduce((arr, data) => (Object.assign({}, arr, data)), {}));
 };
 
 const getEligibility = async (uid) => {
